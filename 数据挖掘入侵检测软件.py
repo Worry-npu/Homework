@@ -5,24 +5,31 @@ st.set_page_config(page_title="数据挖掘算法原型系统", layout="wide")
 
 st.title("💡 数据挖掘算法原型系统")
 
+# 添加样式
 st.markdown("""
 <style>
-.section-title {
-    font-size: 22px;
-    font-weight: bold;
-    margin-top: 30px;
-}
-.block {
-    background-color: #f0f2f6;
-    padding: 16px;
-    border-radius: 10px;
-    margin-top: 10px;
-    margin-bottom: 20px;
-}
-.download-button a {
-    text-decoration: none;
-    font-weight: bold;
-}
+    .section-title {
+        font-size: 24px;
+        font-weight: bold;
+        margin-top: 30px;
+        color: #0056b3;
+    }
+    .block {
+        background-color: #f0f2f6;
+        padding: 16px;
+        border-radius: 10px;
+        margin-top: 10px;
+        margin-bottom: 20px;
+        color: #333333;  /* 黑色字体，更容易阅读 */
+    }
+    .download-button a {
+        text-decoration: none;
+        font-weight: bold;
+        color: #007bff;
+    }
+    .download-button a:hover {
+        color: #0056b3;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -37,15 +44,15 @@ st.markdown("""
 
 # 📘 使用手册
 st.markdown("<div class='section-title'>📘 使用手册</div>", unsafe_allow_html=True)
-manual_path = Path("static/用户手册.pdf")
-if manual_path.exists():
-    st.markdown(f"""
-    <div class='block'>
-        👉 <span class="download-button"><a href="{manual_path.as_posix()}" target="_blank">点击查看 / 下载用户手册（PDF）</a></span>
-    </div>
-    """, unsafe_allow_html=True)
-else:
-    st.warning("用户手册文件未找到，请将 `用户手册.pdf` 放入项目的 `static/` 目录中。")
+
+# 假设手册 PDF 文件已上传到 GitHub 的 static 文件夹
+manual_url = "https://github.com/你的用户名/你的仓库名/raw/main/static/用户手册.pdf"
+
+st.markdown(f"""
+<div class='block'>
+    👉 <span class="download-button"><a href="{manual_url}" target="_blank">点击查看 / 下载用户手册（PDF）</a></span>
+</div>
+""", unsafe_allow_html=True)
 
 # 👨‍🔬 权属信息
 st.markdown("<div class='section-title'>👨‍🔬 权属信息</div>", unsafe_allow_html=True)
