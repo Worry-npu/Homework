@@ -46,7 +46,7 @@ st.markdown("""
 st.markdown("<div class='section-title'>📘 使用手册</div>", unsafe_allow_html=True)
 
 # 假设手册 PDF 文件已上传到 GitHub 的 static 文件夹
-manual_url = "https://github.com/你的用户名/你的仓库名/raw/main/static/用户手册.pdf"
+manual_url = "https://github.com/Worry-npu/Homework/blob/69f2a467d5be08830a6138021d51a137adb28a18/static/%E7%94%A8%E6%88%B7%E6%89%8B%E5%86%8C.pdf"
 
 st.markdown(f"""
 <div class='block'>
