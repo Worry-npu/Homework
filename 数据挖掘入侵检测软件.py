@@ -72,6 +72,6 @@ st.markdown("""
 - 9️⃣ 逻辑回归  - 🔟 朴素贝叶斯  - 11️⃣ 线性回归  - 12️⃣ 决策树回归  
 - 13️⃣ 随机森林回归  - 14️⃣ XGBoost 回归  - 15️⃣ PCA 降维  
 - 16️⃣ t-SNE 降维  - 17️⃣ AutoEncoder 降维  - 18️⃣ 孤立森林  
-- 19️⃣ Apriori 关联规则  - 20️⃣ FP-Growth 关联规则
+- 19️⃣ Spectral Clustering  - 20️⃣ FP-Growth 关联规则
 </div>
 """, unsafe_allow_html=True)
