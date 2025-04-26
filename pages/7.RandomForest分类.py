@@ -2,15 +2,22 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import shap
-import joblib
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.metrics import mean_squared_error, r2_score
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    accuracy_score, classification_report,
+    confusion_matrix, ConfusionMatrixDisplay
+)
+from sklearn.preprocessing import (
+    StandardScaler, OneHotEncoder, LabelEncoder
+)
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
 
 # 初始化会话状态
 if 'preprocess_params' not in st.session_state:
@@ -20,8 +27,9 @@ if 'preprocess_params' not in st.session_state:
         'missing_strategy': '删除含缺失行'
     }
 
-st.set_page_config(page_title="🌲 高级随机森林回归", layout="wide")
-st.title("🌲 高级随机森林回归分析")
+st.set_page_config(page_title="随机森林分类分析", layout="wide")
+st.title("📊 随机森林分类分析工具")
+
 
 # ==================== 数据预处理模块 ====================
 def data_preprocessing(df):
@@ -56,6 +64,7 @@ def data_preprocessing(df):
         return df.dropna()
     return df
 
+
 # ==================== 主程序流程 ====================
 uploaded_file = st.sidebar.file_uploader("📂 上传CSV文件", type=["csv"])
 
@@ -74,22 +83,26 @@ if uploaded_file:
             [col for col in processed_df.columns if col != target_col]
         )
 
-        st.markdown("## ⚙ 高级参数设置")
-        with st.expander("树参数设置"):
-            params = {
-                'n_estimators': st.slider("树的数量", 10, 1000, 100),
-                'max_depth': st.slider("最大深度", 1, 50, 5),
-                'min_samples_split': st.slider("最小分割样本", 2, 20, 2)
-            }
+        st.markdown("## ⚙ 算法选择与参数设置")
+        model_type = st.selectbox("选择分类算法",
+                                  ["随机森林"])
 
-        with st.expander("交叉验证设置"):
-            cv_settings = {
-                'cv_folds': st.slider("交叉验证折数", 2, 10, 5),
-                'test_size': st.slider("测试集比例", 0.1, 0.5, 0.2, 0.05)
-            }
+        param_setting = {}
+        with st.expander("算法参数设置"):
+            if model_type == "随机森林":
+                param_setting = {
+                    'n_estimators': st.slider("树的数量", 10, 1000, 100),
+                    'max_depth': st.slider("最大深度", 1, 50, 5)
+                }
+
 
     if feature_cols:
         # ==================== 数据预处理管道 ====================
+        # 编码目标变量
+        le = LabelEncoder()
+        y = le.fit_transform(processed_df[target_col])
+
+        # 特征类型识别
         numeric_features = processed_df[feature_cols].select_dtypes(include=np.number).columns.tolist()
         categorical_features = list(set(feature_cols) - set(numeric_features))
 
@@ -115,86 +128,61 @@ if uploaded_file:
 
         # ==================== 模型训练 ====================
         X = processed_df[feature_cols]
-        y = processed_df[target_col]
-
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y,
-            test_size=cv_settings['test_size'],
-            random_state=42
+            X, y, test_size=0.2, random_state=42
         )
 
-        # 超参数网格搜索
-        model = GridSearchCV(
-            RandomForestRegressor(),
-            param_grid={k: [v] for k, v in params.items()},
-            cv=cv_settings['cv_folds'],
-            scoring='neg_mean_squared_error'
-        )
-        model.fit(preprocessor.fit_transform(X_train), y_train)
+        # 初始化模型
+        if model_type == "随机森林":
+            model = RandomForestClassifier(**param_setting)
+
+
+        # 构建完整流程
+        full_pipeline = Pipeline([
+            ('preprocessor', preprocessor),
+            ('classifier', model)
+        ])
+
+        full_pipeline.fit(X_train, y_train)
 
         # ==================== 模型评估 ====================
         st.subheader("📈 模型性能评估")
-        y_pred = model.predict(preprocessor.transform(X_test))
+        y_pred = full_pipeline.predict(X_test)
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         with col1:
-            st.metric("RMSE", f"{np.sqrt(mean_squared_error(y_test, y_pred)):.4f}")
+            st.metric("准确率", f"{accuracy_score(y_test, y_pred):.2%}")
+
+            st.markdown("&zwnj;**分类报告**&zwnj;")
+            report = classification_report(y_test, y_pred, output_dict=True)
+            st.dataframe(pd.DataFrame(report).transpose())
+
         with col2:
-            st.metric("R² Score", f"{r2_score(y_test, y_pred):.4f}")
-        with col3:
-            st.metric("最佳参数", str(model.best_params_))
-
-        # ==================== 可视化模块 ====================
-        tabs = st.tabs(["📈 预测效果", "⭐ 特征重要性", "🔍 SHAP解释", "📊 残差分析"])
-
-        with tabs[0]:
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.scatter(y_test, y_pred, alpha=0.6)
-            ax.plot([y.min(), y.max()], [y.min(), y.max()], 'r--')
-            ax.set_xlabel("实际值")
-            ax.set_ylabel("预测值")
+            st.markdown("&zwnj;**混淆矩阵**&zwnj;")
+            cm = confusion_matrix(y_test, y_pred)
+            fig, ax = plt.subplots()
+            ConfusionMatrixDisplay(cm, display_labels=le.classes_).plot(ax=ax)
             st.pyplot(fig)
 
-        with tabs[1]:
-            importance = model.best_estimator_.feature_importances_
-            features = preprocessor.get_feature_names_out()
+        # 显示特征重要性（仅适用于树模型）
+        if model_type in ["决策树", "随机森林"]:
+            st.markdown("&zwnj;**特征重要性**&zwnj;")
+            if hasattr(model, 'feature_importances_'):
+                importances = model.feature_importances_
+                # 获取处理后的特征名称
+                feature_names = []
+                if len(numeric_features) > 0:
+                    feature_names += numeric_features
+                if len(categorical_features) > 0:
+                    ohe = preprocessor.named_transformers_['cat'].named_steps['encoder']
+                    cat_names = ohe.get_feature_names_out(categorical_features)
+                    feature_names += list(cat_names)
 
-            fig, ax = plt.subplots(figsize=(10, 6))
-            pd.Series(importance, index=features).nlargest(10).plot.barh(ax=ax)
-            ax.set_title("Top 10 重要特征")
-            st.pyplot(fig)
+                importance_df = pd.DataFrame({
+                    '特征': feature_names,
+                    '重要性': importances
+                }).sort_values('重要性', ascending=False)
 
-        with tabs[2]:
-            explainer = shap.TreeExplainer(model.best_estimator_)
-            shap_values = explainer.shap_values(preprocessor.transform(X_test))
+                st.dataframe(importance_df, height=300)
 
-            fig, ax = plt.subplots(figsize=(10, 6))
-            shap.summary_plot(shap_values, preprocessor.transform(X_test),
-                            feature_names=features, plot_type="bar")
-            st.pyplot(fig)
 
-        with tabs[3]:
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-
-            residuals = y_test - y_pred
-            ax1.hist(residuals, bins=30)
-            ax1.set_title("残差分布")
-
-            ax2.scatter(y_pred, residuals, alpha=0.6)
-            ax2.axhline(0, color='red', linestyle='--')
-            ax2.set_title("残差 vs 预测值")
-
-            st.pyplot(fig)
-
-        # ==================== 模型保存模块 ====================
-        st.sidebar.markdown("## 💾 模型管理")
-        if st.sidebar.button("保存当前模型"):
-            joblib.dump({
-                'model': model.best_estimator_,
-                'preprocessor': preprocessor,
-                'feature_cols': feature_cols
-            }, 'random_forest_model.pkl')
-            st.sidebar.success("模型已保存为 random_forest_model.pkl")
-
-else:
-    st.info("📥 请上传CSV格式的数据文件")
