@@ -1,69 +1,163 @@
 import streamlit as st
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-import seaborn as sns
+import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    accuracy_score, classification_report,
+    confusion_matrix, ConfusionMatrixDisplay
+)
+from sklearn.preprocessing import (
+    StandardScaler, OneHotEncoder, LabelEncoder
+)
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.neighbors import KNeighborsClassifier
 
-st.set_page_config(page_title="📘 KNN 分类模型", layout="wide")
-st.title("📘 KNN（K近邻）分类模型分析")
+# 初始化会话状态
+if 'preprocess_params' not in st.session_state:
+    st.session_state.preprocess_params = {
+        'scale_numeric': True,
+        'encode_categorical': True,
+        'missing_strategy': '删除含缺失行'
+    }
 
-# 上传数据
+st.set_page_config(page_title="KNN分类分析", layout="wide")
+st.title("📊 KNN分类分析工具")
+
+
+# ==================== 数据预处理模块 ====================
+def data_preprocessing(df):
+    with st.expander("🔧 数据预处理设置", expanded=True):
+        col1, col2 = st.columns(2)
+
+        # 缺失值处理
+        with col1:
+            st.markdown("### 🚫 缺失值处理")
+            st.session_state.preprocess_params['missing_strategy'] = st.selectbox(
+                "处理方式",
+                ["删除含缺失行", "数值列填充均值", "分类列填充众数"],
+                key="missing_strategy"
+            )
+
+        # 特征工程
+        with col2:
+            st.markdown("### 🛠 特征工程")
+            st.session_state.preprocess_params['scale_numeric'] = st.checkbox(
+                "标准化数值特征",
+                value=True,
+                key="scale_numeric"
+            )
+            st.session_state.preprocess_params['encode_categorical'] = st.checkbox(
+                "编码分类特征",
+                value=True,
+                key="encode_categorical"
+            )
+
+    # 应用缺失值处理策略
+    if st.session_state.preprocess_params['missing_strategy'] == "删除含缺失行":
+        return df.dropna()
+    return df
+
+
+# ==================== 主程序流程 ====================
 uploaded_file = st.sidebar.file_uploader("📂 上传CSV文件", type=["csv"])
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-    st.subheader("📋 数据预览")
-    st.dataframe(df.head(10))
+    processed_df = data_preprocessing(df.copy())
 
+    # ==================== 特征选择界面 ====================
     with st.sidebar:
-        st.markdown("### ⚙️ 模型配置")
-        target_col = st.selectbox("🎯 选择目标列（分类）", df.columns)
-        feature_cols = st.multiselect("📊 选择特征列", [col for col in df.columns if col != target_col])
-        test_size = st.slider("测试集比例", 0.1, 0.5, 0.2, 0.05)
-        k_neighbors = st.slider("K值（邻居数量）", 1, 20, 5)
+        st.markdown("## 🎯 目标变量设置")
+        target_col = st.selectbox("选择目标列", processed_df.columns)
+
+        st.markdown("## 📊 特征选择")
+        feature_cols = st.multiselect(
+            "选择预测特征",
+            [col for col in processed_df.columns if col != target_col]
+        )
+
+        st.markdown("## ⚙ 算法选择与参数设置")
+        model_type = st.selectbox("选择分类算法",
+                                  ["KNN"])
+
+        param_setting = {}
+        with st.expander("算法参数设置"):
+            if model_type == "KNN":
+                param_setting = {
+                    'n_neighbors': st.slider("邻居数量", 1, 50, 5),
+                    'weights': st.selectbox("权重类型", ['uniform', 'distance'])
+                }
 
     if feature_cols:
-        X = df[feature_cols]
-        y = df[target_col]
+        # ==================== 数据预处理管道 ====================
+        # 编码目标变量
+        le = LabelEncoder()
+        y = le.fit_transform(processed_df[target_col])
 
-        # 编码文本列
-        for col in X.columns:
-            if X[col].dtype == "object":
-                X[col] = LabelEncoder().fit_transform(X[col])
-        if y.dtype == "object":
-            y = LabelEncoder().fit_transform(y)
+        # 特征类型识别
+        numeric_features = processed_df[feature_cols].select_dtypes(include=np.number).columns.tolist()
+        categorical_features = list(set(feature_cols) - set(numeric_features))
 
-        # 划分训练集和测试集
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
+        # 数值型特征处理
+        numeric_steps = [('imputer', SimpleImputer(strategy='mean'))]
+        if st.session_state.preprocess_params['scale_numeric']:
+            numeric_steps.append(('scaler', StandardScaler()))
 
-        # 创建并训练模型
-        model = KNeighborsClassifier(n_neighbors=k_neighbors)
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
+        numeric_transformer = Pipeline(numeric_steps)
 
-        # 模型评估
-        acc = accuracy_score(y_test, y_pred)
-        cm = confusion_matrix(y_test, y_pred)
-        report = classification_report(y_test, y_pred, output_dict=True)
-        report_df = pd.DataFrame(report).transpose()
+        # 分类型特征处理
+        categorical_steps = [('imputer', SimpleImputer(strategy='most_frequent'))]
+        if st.session_state.preprocess_params['encode_categorical']:
+            categorical_steps.append(('encoder', OneHotEncoder(handle_unknown='ignore')))
 
-        st.subheader("📊 模型评估结果")
-        st.markdown(f"**✅ 准确率**：`{acc:.4f}`")
-        st.markdown("📋 分类报告：")
-        st.dataframe(report_df.style.background_gradient(cmap="BuGn"))
+        categorical_transformer = Pipeline(categorical_steps)
 
-        st.subheader("🧊 混淆矩阵")
-        fig, ax = plt.subplots()
-        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
-        ax.set_xlabel("预测值")
-        ax.set_ylabel("实际值")
-        ax.set_title("混淆矩阵热力图")
-        st.pyplot(fig)
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('num', numeric_transformer, numeric_features),
+                ('cat', categorical_transformer, categorical_features)
+            ])
 
-    else:
-        st.warning("⚠️ 请先选择特征变量")
-else:
-    st.info("📥 请上传CSV格式的数据文件。")
+        # ==================== 模型训练 ====================
+        X = processed_df[feature_cols]
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
+
+        # 初始化模型
+        if model_type == "KNN":
+            model = KNeighborsClassifier(**param_setting)
+
+        # 构建完整流程
+        full_pipeline = Pipeline([
+            ('preprocessor', preprocessor),
+            ('classifier', model)
+        ])
+
+        full_pipeline.fit(X_train, y_train)
+
+        # ==================== 模型评估 ====================
+        st.subheader("📈 模型性能评估")
+        y_pred = full_pipeline.predict(X_test)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("准确率", f"{accuracy_score(y_test, y_pred):.2%}")
+
+            st.markdown("&zwnj;**分类报告**&zwnj;")
+            report = classification_report(y_test, y_pred, output_dict=True)
+            st.dataframe(pd.DataFrame(report).transpose())
+
+        with col2:
+            st.markdown("&zwnj;**混淆矩阵**&zwnj;")
+            cm = confusion_matrix(y_test, y_pred)
+            fig, ax = plt.subplots()
+            ConfusionMatrixDisplay(cm, display_labels=le.classes_).plot(ax=ax)
+            st.pyplot(fig)
+
+
+
+
